@@ -95,12 +95,21 @@ def _build_3dmol_trajectory_html(
           viewer.addModelsAsFrames(mdFrameData, "pdb");
           styleComplex();
         }} else {{
-          $3Dmol.download("pdb:{pdb_id}", viewer, {{}}, function() {{
-            if (mdFrameData && mdFrameData.trim().length > 0) {{
-              viewer.addModelsAsFrames(mdFrameData, "pdb");
-            }}
-            styleComplex();
-          }});
+          fetch("https://files.rcsb.org/view/{pdb_id}.pdb")
+            .then(res => {{ if (!res.ok) throw new Error("PDB not found"); return res.text(); }})
+            .then(pdbText => {{
+              viewer.addModel(pdbText, "pdb");
+              if (mdFrameData && mdFrameData.trim().length > 0) {{
+                viewer.addModelsAsFrames(mdFrameData, "pdb");
+              }}
+              styleComplex();
+            }})
+            .catch(() => {{
+              if (mdFrameData && mdFrameData.trim().length > 0) {{
+                viewer.addModelsAsFrames(mdFrameData, "pdb");
+                styleComplex();
+              }}
+            }});
         }}
       }})();
     </script>
@@ -277,3 +286,4 @@ def render_viewer() -> dict:
         "total_frames": total_frames,
         "is_playing": st.session_state["viewer_playing"],
     }
+

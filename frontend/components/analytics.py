@@ -121,6 +121,11 @@ def render_analytics() -> dict:
     scores_df = pd.DataFrame(st.session_state.get("scores_data", DEFAULT_SCORES))
     properties = st.session_state.get("properties_data", DEFAULT_PROPERTIES)
 
+    if not st.session_state.get("execution_completed", False):
+        st.info(
+            "Showing sample reference preview. Go to **2. Execution Control Panel** and click **Run Execution** "
+            f"to compute live AutoDock Vina scores and physicochemical metrics for **{target_id}**."
+        )
     st.markdown(f"#### 1. AutoDock Vina v1.2.7 Binding Affinity Scores (Target: `{target_id}` | Pocket: `{pocket_src}`)")
     st.dataframe(
         scores_df,
@@ -212,4 +217,5 @@ def render_analytics() -> dict:
         "top_score": float(scores_df["Binding Score (kcal/mol)"].min()),
         "num_poses": len(scores_df),
     }
+
 
