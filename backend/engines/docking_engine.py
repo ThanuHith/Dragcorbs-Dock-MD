@@ -19,11 +19,17 @@ PDB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 def _resolve_vina_binary() -> Path:
     if platform.system().lower() == "windows":
         return BACKEND_DIR / "vina.exe"
-    linux_bin = BACKEND_DIR / "vina"
-    if linux_bin.exists():
-        return linux_bin
+    for candidate in (BACKEND_DIR / "vina", Path("/tmp/vina")):
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return candidate
     sys_vina = shutil.which("vina")
-    return Path(sys_vina) if sys_vina else linux_bin
+    if sys_vina:
+        return Path(sys_vina)
+    tmp_vina = Path("/tmp/vina")
+    url = "https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.7/vina_1.2.7_linux_x86_64"
+    urllib.request.urlretrieve(url, tmp_vina)
+    os.chmod(tmp_vina, 0o755)
+    return tmp_vina
 
 VINA_BINARY = _resolve_vina_binary()
 
@@ -312,4 +318,5 @@ def run_autodock_vina(
         "top_pose_pdb": top_pose_pdb,
         "vina_stdout": proc.stdout,
     }
+
 

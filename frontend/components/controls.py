@@ -317,13 +317,19 @@ def render_controls() -> dict:
                 "grid_center": None if auto_pocket else [center_x, center_y, center_z],
                 "grid_size": None if auto_pocket else [size_x, size_y, size_z],
             }
-            resp = requests.post(
-                f"{BACKEND_URL}/api/dock",
-                json=dock_payload,
-                timeout=120,
-            )
-            if resp.ok:
-                payload = resp.json()
+            payload = None
+            try:
+                resp = requests.post(
+                    f"{BACKEND_URL}/api/dock",
+                    json=dock_payload,
+                    timeout=120,
+                )
+                if resp.ok:
+                    payload = resp.json()
+            except Exception:
+                payload = _run_inprocess_dock(dock_payload)
+
+            if payload:
                 st.session_state["scores_data"] = payload.get("scores_table", [])
                 st.session_state["properties_data"] = payload.get("property_cards", [])
                 st.session_state["pocket_source"] = payload.get("pocket_source", "auto")
@@ -352,33 +358,33 @@ def render_controls() -> dict:
                     f"{sim_steps}-step All-Atom Pocket Langevin MD ({temperature_k} K)..."
                 ),
             )
+            md_payload = {
+                "pdb_id": pdb_id,
+                "pdb_content": receptor_pdb_text,
+                "ligand_pdb_content": top_pose_pdb,
+                "ligand_smiles": top_smiles,
+                "compound_id": top_compound_id,
+                "grid_center": resolved_center,
+                "force_field": ff_xml,
+                "water_model": water_xml,
+                "steps": sim_steps,
+                "num_frames": num_frames,
+                "temperature_k": temperature_k,
+                "friction_coeff": friction_coeff,
+                "solvent_padding_nm": solvent_padding,
+                "minimize_energy": enable_minimization,
+            }
             md_result = None
             try:
                 md_resp = requests.post(
                     f"{BACKEND_URL}/api/md-simulate",
-                    json={
-                        "pdb_id": pdb_id,
-                        "pdb_content": receptor_pdb_text,
-                        "ligand_pdb_content": top_pose_pdb,
-                        "ligand_smiles": top_smiles,
-                        "compound_id": top_compound_id,
-                        "grid_center": resolved_center,
-                        "force_field": ff_xml,
-                        "water_model": water_xml,
-                        "steps": sim_steps,
-                        "num_frames": num_frames,
-                        "temperature_k": temperature_k,
-                        "friction_coeff": friction_coeff,
-                        "solvent_padding_nm": solvent_padding,
-                        "minimize_energy": enable_minimization,
-                    },
+                    json=md_payload,
                     timeout=120,
                 )
                 if md_resp.ok:
                     md_result = md_resp.json()
-            except Exception as exc:
-                st.warning(f"MD simulation fallback triggered: {exc}")
-                md_result = None
+            except Exception:
+                md_result = _run_inprocess_md(md_payload)
 
             if md_result is None:
                 md_result = _generate_local_md_fallback(
@@ -411,3 +417,4 @@ def render_controls() -> dict:
         )
 
     return config
+
