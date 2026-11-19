@@ -10,3 +10,5 @@ meeko>=0.6.0
 gemmi>=0.6.7
 tabulate>=0.9.0
 scipy>=1.14.0
+
+# trigger server restart for static serving
