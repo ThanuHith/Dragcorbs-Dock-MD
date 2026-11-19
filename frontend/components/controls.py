@@ -7,6 +7,37 @@ import time
 import requests
 import streamlit as st
 
+import asyncio
+import concurrent.futures
+import sys
+from pathlib import Path
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
+
+
+def _run_inprocess_dock(dock_payload: dict) -> dict | None:
+    """Execute backend docking directly in-process on single-container cloud hosts."""
+    if str(BACKEND_ROOT) not in sys.path:
+        sys.path.insert(0, str(BACKEND_ROOT))
+    from main import DockRequest, run_docking  # type: ignore
+
+    req = DockRequest(**dock_payload)
+    try:
+        return asyncio.run(run_docking(req))
+    except RuntimeError:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, run_docking(req)).result()
+
+
+def _run_inprocess_md(md_payload: dict) -> dict | None:
+    """Execute backend all-atom pocket MD directly in-process on single-container cloud hosts."""
+    if str(BACKEND_ROOT) not in sys.path:
+        sys.path.insert(0, str(BACKEND_ROOT))
+    from main import MDSimulateRequest, _run_openmm_simulation  # type: ignore
+
+    req = MDSimulateRequest(**md_payload)
+    return _run_openmm_simulation(req)
+
 BACKEND_URL = os.environ.get("DRAGCORBS_BACKEND_URL", "http://127.0.0.1:8000")
 
 FORCE_FIELD_PRESETS = {
@@ -417,4 +448,5 @@ def render_controls() -> dict:
         )
 
     return config
+
 
