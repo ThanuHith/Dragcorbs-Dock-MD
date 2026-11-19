@@ -53,6 +53,21 @@ DEFAULT_PROPERTIES = [
 ]
 
 
+def _df_to_markdown_safe(df: pd.DataFrame) -> str:
+    """Format a DataFrame as a Markdown table without requiring optional tabulate."""
+    try:
+        return df.to_markdown(index=False)
+    except Exception:
+        cols = [str(c) for c in df.columns]
+        header = "| " + " | ".join(cols) + " |"
+        sep = "| " + " | ".join(["---"] * len(cols)) + " |"
+        rows = [
+            "| " + " | ".join(str(row[c]) for c in df.columns) + " |"
+            for _, row in df.iterrows()
+        ]
+        return "\n".join([header, sep, *rows])
+
+
 def _build_export_bundle(scores_df: pd.DataFrame, properties: list[dict], target_id: str) -> bytes:
     """Create a ZIP bundle containing CSV, JSON, and Markdown summary reports."""
     buffer = io.BytesIO()
@@ -60,7 +75,7 @@ def _build_export_bundle(scores_df: pd.DataFrame, properties: list[dict], target
         f"# Dragcorbs Analysis Report — Target {target_id}",
         "",
         "## 1. Calculated Binding Affinity Scores",
-        scores_df.to_markdown(index=False) if hasattr(scores_df, "to_markdown") else scores_df.to_csv(index=False),
+        _df_to_markdown_safe(scores_df),
         "",
         "## 2. Physicochemical Property Profile",
     ]
@@ -197,3 +212,4 @@ def render_analytics() -> dict:
         "top_score": float(scores_df["Binding Score (kcal/mol)"].min()),
         "num_poses": len(scores_df),
     }
+
