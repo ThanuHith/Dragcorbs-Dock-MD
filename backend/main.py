@@ -8,8 +8,30 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+try:
+    from fastapi import FastAPI, HTTPException
+    from fastapi.middleware.cors import CORSMiddleware
+except ImportError:
+    class HTTPException(Exception):
+        def __init__(self, status_code: int = 500, detail: str = ""):
+            self.status_code = status_code
+            self.detail = detail
+            super().__init__(detail)
+
+    class CORSMiddleware:
+        pass
+
+    class _FallbackFastAPI:
+        def __init__(self, *args, **kwargs):
+            pass
+        def add_middleware(self, *args, **kwargs):
+            pass
+        def get(self, *args, **kwargs):
+            return lambda fn: fn
+        def post(self, *args, **kwargs):
+            return lambda fn: fn
+
+    FastAPI = _FallbackFastAPI
 from pydantic import BaseModel, Field
 
 from engines.docking_engine import (
@@ -922,3 +944,4 @@ async def run_docking(request: DockRequest) -> dict[str, Any]:
 async def run_md_simulation(request: MDSimulateRequest) -> dict[str, Any]:
     """Combine active protein target and docked/uploaded ligand into a single complex and run physics MD."""
     return _run_openmm_simulation(request)
+

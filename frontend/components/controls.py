@@ -31,12 +31,16 @@ def _run_inprocess_dock(dock_payload: dict) -> dict | None:
 
 def _run_inprocess_md(md_payload: dict) -> dict | None:
     """Execute backend all-atom pocket MD directly in-process on single-container cloud hosts."""
-    if str(BACKEND_ROOT) not in sys.path:
-        sys.path.insert(0, str(BACKEND_ROOT))
-    from main import MDSimulateRequest, _run_openmm_simulation  # type: ignore
+    try:
+        if str(BACKEND_ROOT) not in sys.path:
+            sys.path.insert(0, str(BACKEND_ROOT))
+        from main import MDSimulateRequest, _run_openmm_simulation  # type: ignore
 
-    req = MDSimulateRequest(**md_payload)
-    return _run_openmm_simulation(req)
+        req = MDSimulateRequest(**md_payload)
+        return _run_openmm_simulation(req)
+    except Exception as exc:
+        st.warning(f"Using local trajectory integrator: {exc}")
+        return None
 
 BACKEND_URL = os.environ.get("DRAGCORBS_BACKEND_URL", "http://127.0.0.1:8000")
 
@@ -448,5 +452,6 @@ def render_controls() -> dict:
         )
 
     return config
+
 
 
