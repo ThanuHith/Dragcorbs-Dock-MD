@@ -1,0 +1,9 @@
+streamlit>=1.36
+pandas>=2.0
+py3Dmol>=2.1
+stmol>=0.0.9
+ipython_genutils>=0.2
+reportlab>=4.0
+python-docx>=1.1
+matplotlib>=3.8
+requests>=2.31

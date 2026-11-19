@@ -1,0 +1,152 @@
+import os
+import subprocess
+import tempfile
+from rdkit import Chem
+from rdkit.Chem import AllChem
+from meeko import MoleculePreparation, PDBQTWriterLegacy
+
+
+def prepare_ligand_pdbqt(input_data: str, is_smiles: bool = True) -> str:
+    """
+    Converts a SMILES string or SDF/MOL block into a Vina-ready PDBQT string
+    using RDKit ETKDGv3 3D conformer generation and Meeko.
+    """
+    if is_smiles:
+        mol = Chem.MolFromSmiles(input_data.strip())
+    else:
+        mol = Chem.MolFromMolBlock(input_data, removeHs=False)
+        if mol is None:
+            mol = Chem.MolFromPDBBlock(input_data, removeHs=False)
+
+    if mol is None:
+        raise ValueError("Invalid ligand input: could not parse SMILES or structure block.")
+
+    mol = Chem.AddHs(mol, addCoords=True)
+    if is_smiles or mol.GetNumConformers() == 0:
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 42
+        if AllChem.EmbedMolecule(mol, params) != 0:
+            raise ValueError("3D conformer embedding failed for ligand.")
+        AllChem.MMFFOptimizeMolecule(mol)
+
+    preparator = MoleculePreparation()
+    mol_setups = preparator.prepare(mol)
+    pdbqt_string, is_ok, err_msg = PDBQTWriterLegacy.write_string(mol_setups[0])
+    if not is_ok:
+        raise RuntimeError(f"Meeko PDBQT conversion failed: {err_msg}")
+
+    return pdbqt_string
+
+
+def clean_receptor_to_pdbqt(pdb_content: str) -> str:
+    """
+    Strips water/heteroatoms (keeping standard ATOM records) and formats
+    receptor coordinates into a clean PDBQT block for AutoDock Vina.
+    """
+    pdbqt_lines = []
+    for line in pdb_content.splitlines():
+        if line.startswith("ATOM  "):
+            atom_name = line[12:16].strip()
+            element = line[76:78].strip() if len(line) >= 78 else atom_name[0]
+            # Map common receptor atom types to AutoDock atom types
+            ad_type = element.upper()
+            if ad_type == "N":
+                ad_type = "NA" if atom_name in ("ND1", "NE2", "OD1", "OE1") else "N"
+            elif ad_type == "O":
+                ad_type = "OA"
+            elif ad_type == "S":
+                ad_type = "SA"
+            elif ad_type == "H":
+                ad_type = "HD"
+
+            base_line = line[:54].ljust(54)
+            pdbqt_lines.append(f"{base_line}  1.00  0.00    +0.000 {ad_type:<2}")
+    pdbqt_lines.append("END")
+    return "\n".join(pdbqt_lines) + "\n"
+
+
+def run_autodock_vina(
+    receptor_pdb_content: str,
+    ligand_input: str,
+    is_smiles: bool,
+    center_x: float,
+    center_y: float,
+    center_z: float,
+    size_x: float = 22.0,
+    size_y: float = 22.0,
+    size_z: float = 22.0,
+    exhaustiveness: int = 8,
+    vina_executable_path: str = "vina.exe"
+) -> dict:
+    """
+    Full end-to-end docking pipeline: prepares receptor & ligand PDBQTs,
+    executes the local AutoDock Vina binary, and parses binding affinities.
+    """
+    try:
+        receptor_pdbqt = clean_receptor_to_pdbqt(receptor_pdb_content)
+        ligand_pdbqt = prepare_ligand_pdbqt(ligand_input, is_smiles=is_smiles)
+    except Exception as prep_err:
+        return {"status": "error", "message": f"Structure preparation error: {str(prep_err)}"}
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        rec_path = os.path.join(temp_dir, "receptor.pdbqt")
+        lig_path = os.path.join(temp_dir, "ligand.pdbqt")
+        out_path = os.path.join(temp_dir, "output_pose.pdbqt")
+
+        with open(rec_path, "w", encoding="utf-8") as rf:
+            rf.write(receptor_pdbqt)
+        with open(lig_path, "w", encoding="utf-8") as lf:
+            lf.write(ligand_pdbqt)
+
+        cmd = [
+            vina_executable_path,
+            "--receptor", rec_path,
+            "--ligand", lig_path,
+            "--center_x", str(center_x),
+            "--center_y", str(center_y),
+            "--center_z", str(center_z),
+            "--size_x", str(size_x),
+            "--size_y", str(size_y),
+            "--size_z", str(size_z),
+            "--exhaustiveness", str(exhaustiveness),
+            "--out", out_path
+        ]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+            poses = []
+            reading_results = False
+            for line in result.stdout.splitlines():
+                if "-----+------------" in line:
+                    reading_results = True
+                    continue
+                if reading_results and line.strip() == "":
+                    break
+                if reading_results:
+                    parts = line.split()
+                    if len(parts) >= 4 and parts[0].isdigit():
+                        poses.append({
+                            "rank": int(parts[0]),
+                            "affinity_kcal_mol": float(parts[1]),
+                            "rmsd_lower": float(parts[2]),
+                            "rmsd_upper": float(parts[3])
+                        })
+
+            pose_pdbqt_content = ""
+            if os.path.exists(out_path):
+                with open(out_path, "r", encoding="utf-8") as pf:
+                    pose_pdbqt_content = pf.read()
+
+            return {
+                "status": "success",
+                "poses": poses,
+                "best_affinity_kcal_mol": poses[0]["affinity_kcal_mol"] if poses else None,
+                "output_pdbqt": pose_pdbqt_content,
+                "logs": result.stdout
+            }
+
+        except subprocess.CalledProcessError as e:
+            return {"status": "error", "message": f"Vina execution failed: {e.stderr}"}
+        except FileNotFoundError:
+            return {"status": "error", "message": f"Binary not found at '{vina_executable_path}'."}
