@@ -4,6 +4,44 @@ from __future__ import annotations
 from pathlib import Path
 import streamlit as st
 
+def _inject_head_seo_and_verification() -> None:
+    """Inject Google Search Console verification, title, and SEO metadata into Streamlit's <head>."""
+    try:
+        index_path = Path(st.__file__).resolve().parent / "static" / "index.html"
+        if not index_path.exists():
+            return
+        html = index_path.read_text(encoding="utf-8")
+        token = "gqmCSWYuHBZSyz0bIU2ilGKEU2p921xwrL9vyZLErIc"
+        if token in html:
+            return
+        head_tags = (
+            f'<meta name="google-site-verification" content="{token}" />\n'
+            '<meta name="description" content="Dragcorbs is a web-based structural biology platform for online molecular docking (AutoDock Vina v1.2.7), RDKit physicochemical profiling, and active-site molecular dynamics simulation." />\n'
+            '<meta name="keywords" content="Dragcorbs, molecular docking web app, online AutoDock Vina, molecular dynamics simulation, protein ligand docking, RDKit, drug discovery" />\n'
+            '<meta property="og:title" content="Dragcorbs — Molecular Docking & Molecular Dynamics Web Platform" />\n'
+            '<meta property="og:description" content="Run genuine AutoDock Vina v1.2.7 molecular docking, RCSB PDB active-site detection, and all-atom molecular dynamics directly in your browser." />\n'
+            '<meta property="og:type" content="website" />\n'
+            '<script type="application/ld+json">'
+            '{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Dragcorbs",'
+            '"applicationCategory":"ScientificApplication","operatingSystem":"Web Browser",'
+            '"url":"https://dragcorbs-dock-md.streamlit.app/",'
+            '"description":"Online molecular docking, physicochemical descriptor profiling, and active-site molecular dynamics web application powered by AutoDock Vina and RDKit.",'
+            '"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}'
+            '</script>\n'
+        )
+        html = html.replace(
+            "<title>Streamlit</title>",
+            "<title>Dragcorbs — Online Molecular Docking & Molecular Dynamics Web App</title>",
+        )
+        if "</head>" in html:
+            html = html.replace("</head>", f"{head_tags}</head>", 1)
+            index_path.write_text(html, encoding="utf-8")
+    except Exception:
+        pass
+
+
+_inject_head_seo_and_verification()
+
 from theme import apply_theme
 from components.branding import render_branding, _logo_data_uri
 from components.input_hub import render_input_hub
@@ -198,5 +236,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
